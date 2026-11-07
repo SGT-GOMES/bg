@@ -71,9 +71,14 @@
                 <input type="password" id="senhaInput" placeholder="Introduza a senha" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-12 pr-4 text-sm outline-none focus:border-blue-500 text-center tracking-widest" onkeypress="verificarEnter(event)">
             </div>
             
-            <button onclick="verificarSenha()" class="w-full bg-blue-600 text-white font-bold rounded-xl py-3.5 shadow-sm active:scale-95 transition-transform flex justify-center items-center gap-2 hover:bg-blue-700">
-                Entrar no Sistema <i class="ph ph-arrow-right font-bold"></i>
-            </button>
+            <div class="flex gap-2 w-full">
+                <button onclick="verificarSenha()" class="flex-1 bg-blue-600 text-white font-bold rounded-xl py-3.5 shadow-sm active:scale-95 transition-transform hover:bg-blue-700 flex justify-center items-center gap-2">
+                    Entrar <i class="ph ph-arrow-right font-bold"></i>
+                </button>
+                <button id="btnBioLogin" onclick="loginBiometria()" class="hidden w-14 bg-gray-900 text-white rounded-xl flex justify-center items-center active:scale-95 transition-transform shadow-sm hover:bg-black" title="Entrar com Face ID">
+                    <i class="ph ph-face-id text-2xl"></i>
+                </button>
+            </div>
             <p id="erroSenha" class="text-red-500 text-xs font-semibold mt-3 hidden">Senha incorreta. Tente novamente.</p>
         </div>
         
@@ -207,6 +212,7 @@
                 <p class="text-xs text-gray-600 font-bold uppercase tracking-wide mb-3 flex items-center gap-1.5"><i class="ph ph-lock-key text-gray-400"></i> Segurança de Acesso</p>
                 <p class="text-[10px] text-gray-500 leading-tight">O sistema agora utiliza autenticação universal com criptografia nativa no código (SHA-256). A senha é exigida em qualquer dispositivo que acesse o painel e não pode ser lida a partir do código fonte do GitHub.</p>
                 <button onclick="sessionStorage.removeItem('acesso_liberado'); location.reload();" class="w-full text-gray-700 text-xs font-bold mt-3 py-2.5 bg-white shadow-sm rounded-xl transition-colors border border-gray-200 flex justify-center items-center gap-1.5 hover:bg-gray-100"><i class="ph ph-sign-out"></i> Bloquear Sistema Agora</button>
+                <button onclick="habilitarFaceID()" class="w-full text-blue-700 text-xs font-bold mt-2 py-2.5 bg-blue-50 shadow-sm rounded-xl transition-colors border border-blue-100 flex justify-center items-center gap-1.5 hover:bg-blue-100"><i class="ph ph-face-id text-lg"></i> Habilitar Face ID / Touch ID</button>
             </div>
 
             <!-- Parâmetros -->
@@ -371,6 +377,103 @@
         // SEGURANÇA COM HASH (Criptografia)
         const SENHA_HASH = "578ad5d9c4cf4d69191b3ec5d47390a00f0e2241029f26301080d42462cbc190"; // Hash SHA-256 da senha
 
+        
+        // BIOMETRIA (WebAuthn / Passkeys)
+        function bufferToBase64(buf) {
+            const bytes = new Uint8Array(buf);
+            let str = '';
+            for (let i = 0; i < bytes.byteLength; i++) { str += String.fromCharCode(bytes[i]); }
+            return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+        }
+
+        function base64ToBuffer(b64) {
+            b64 = b64.replace(/-/g, '+').replace(/_/g, '/');
+            while (b64.length % 4 !== 0) { b64 += '='; }
+            const str = atob(b64);
+            const bytes = new Uint8Array(str.length);
+            for (let i = 0; i < str.length; i++) { bytes[i] = str.charCodeAt(i); }
+            return bytes;
+        }
+
+        async function habilitarFaceID() {
+            if (!window.PublicKeyCredential) return alert("O seu navegador não suporta Face ID/Touch ID para sites.");
+            
+            try {
+                const challenge = crypto.getRandomValues(new Uint8Array(32));
+                const userId = crypto.getRandomValues(new Uint8Array(16));
+                
+                const publicKey = {
+                    challenge: challenge,
+                    rp: { name: "BG Empréstimos", id: window.location.hostname },
+                    user: {
+                        id: userId,
+                        name: "admin@bg.com",
+                        displayName: "Admin BG"
+                    },
+                    pubKeyCredParams: [
+                        { type: "public-key", alg: -7 },  // ES256
+                        { type: "public-key", alg: -257 } // RS256
+                    ],
+                    authenticatorSelection: {
+                        authenticatorAttachment: "platform",
+                        userVerification: "required"
+                    },
+                    timeout: 60000,
+                    attestation: "none"
+                };
+
+                const cred = await navigator.credentials.create({ publicKey });
+                localStorage.setItem('bg_bio_id', bufferToBase64(cred.rawId));
+                
+                alert("Face ID configurado com sucesso!");
+                mostrarBotaoBiometria();
+                toggleModal('modalConfig'); // Fecha o modal
+            } catch (err) {
+                console.error(err);
+                if (err.name === 'NotAllowedError') {
+                    alert("Operação cancelada ou sem permissão.");
+                } else {
+                    alert("Não foi possível configurar a biometria neste dispositivo.");
+                }
+            }
+        }
+
+        async function loginBiometria() {
+            const idB64 = localStorage.getItem('bg_bio_id');
+            if (!idB64) return;
+            
+            try {
+                const challenge = crypto.getRandomValues(new Uint8Array(32));
+                
+                const publicKey = {
+                    challenge: challenge,
+                    allowCredentials: [{
+                        id: base64ToBuffer(idB64),
+                        type: 'public-key',
+                        transports: ['internal']
+                    }],
+                    userVerification: "required",
+                    timeout: 60000
+                };
+
+                const assertion = await navigator.credentials.get({ publicKey });
+                if (assertion) {
+                    sessionStorage.setItem('acesso_liberado', 'true');
+                    liberarAcesso();
+                }
+            } catch (err) {
+                console.error(err);
+                // Erro silencioso para não irritar se ele só cancelar a leitura
+            }
+        }
+
+        function mostrarBotaoBiometria() {
+            const btn = document.getElementById('btnBioLogin');
+            if (btn && localStorage.getItem('bg_bio_id')) {
+                btn.classList.remove('hidden');
+            }
+        }
+
         function inicializarSeguranca() {
             // Verifica se a sessão já está autorizada nesta aba
             if (sessionStorage.getItem('acesso_liberado') === 'true') {
@@ -378,6 +481,7 @@
             } else {
                 document.getElementById('loginScreen').classList.remove('hidden');
                 document.getElementById('appContent').classList.remove('visible');
+                mostrarBotaoBiometria(); // MOSTRA BOTAO SE TIVER ATIVADO
                 setTimeout(() => document.getElementById('senhaInput').focus(), 100);
             }
         }
