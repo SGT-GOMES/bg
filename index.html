@@ -408,9 +408,9 @@
         const FIREBASE_URL = "https://bg-emprestimos-default-rtdb.firebaseio.com/banco_gomes_dados.json";
         const FIREBASE_API_KEY = "AIzaSyB35BHD3C33ZJILnr2Pp4ajGpEP-QdoLhY";
         
-        // ⚠️ ATENÇÃO: SUBSTITUA ABAIXO PELO E-MAIL E SENHA QUE VOCÊ CRIOU NO FIREBASE
+        // ⚠️ E-mail do Firebase (A senha não fica mais no código por segurança)
         const FIREBASE_AUTH_EMAIL = "fabriciocbmto@hotmail.com"; 
-        const FIREBASE_AUTH_SENHA = "116476";
+        
         
         let firebaseIdToken = null;
         
@@ -422,10 +422,8 @@
         let isValorMinimoAtivo = false;
         let valorMinimoTemporario = 0;
 
-        // SEGURANÇA COM HASH (Criptografia)
-        const SENHA_HASH = "578ad5d9c4cf4d69191b3ec5d47390a00f0e2241029f26301080d42462cbc190"; // Hash SHA-256 da senha
-
         
+                
         // BIOMETRIA (WebAuthn / Passkeys)
         function bufferToBase64(buf) {
             const bytes = new Uint8Array(buf);
@@ -540,30 +538,53 @@
 
         async function verificarSenha() {
             const senhaDigitada = document.getElementById('senhaInput').value;
-            
-            // Converte a senha digitada em Hash SHA-256 para comparar
-            const encoder = new TextEncoder();
-            const data = encoder.encode(senhaDigitada);
-            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-            const hashArray = Array.from(new Uint8Array(hashBuffer));
-            const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-            
-            if (hashHex === SENHA_HASH) {
-                // Salva a permissão temporária na sessão (para não pedir senha se atualizar a página)
-                sessionStorage.setItem('acesso_liberado', 'true');
-                liberarAcesso();
-            } else {
-                document.getElementById('erroSenha').classList.remove('hidden');
-                document.getElementById('senhaInput').classList.add('border-red-500', 'bg-red-50');
-                setTimeout(() => {
-                    document.getElementById('senhaInput').classList.remove('border-red-500', 'bg-red-50');
-                }, 1000);
+            const btn = document.querySelector('#loginScreen button');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<i class="ph ph-spinner animate-spin text-xl"></i>';
+            btn.disabled = true;
+
+            try {
+                const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_API_KEY}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: FIREBASE_AUTH_EMAIL,
+                        password: senhaDigitada,
+                        returnSecureToken: true
+                    })
+                });
+                const data = await res.json();
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+
+                if (data.idToken) {
+                    firebaseIdToken = data.idToken;
+                    localStorage.setItem('bg_fb_pwd', senhaDigitada);
+                    sessionStorage.setItem('acesso_liberado', 'true');
+                    liberarAcesso();
+                } else {
+                    mostrarErroSenha();
+                }
+            } catch(e) {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+                mostrarErroSenha();
             }
+        }
+
+        function mostrarErroSenha() {
+            document.getElementById('erroSenha').classList.remove('hidden');
+            document.getElementById('senhaInput').classList.add('border-red-500', 'bg-red-50');
+            setTimeout(() => {
+                document.getElementById('senhaInput').classList.remove('border-red-500', 'bg-red-50');
+            }, 1000);
         }
 
         
         async function autenticarFirebase() {
             if (firebaseIdToken) return true; // Já está autenticado
+            const pwd = localStorage.getItem('bg_fb_pwd');
+            if (!pwd) return false;
             
             try {
                 const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_API_KEY}`, {
@@ -571,7 +592,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         email: FIREBASE_AUTH_EMAIL,
-                        password: FIREBASE_AUTH_SENHA,
+                        password: pwd,
                         returnSecureToken: true
                     })
                 });
