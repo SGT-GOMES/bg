@@ -333,6 +333,28 @@
         </div>
     </div>
 
+    
+    <!-- Modal Abater -->
+    <div id="modalAbater" class="modal">
+        <div class="bg-white w-full rounded-t-3xl p-6 shadow-xl transform transition-transform h-auto max-h-[85vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
+                <h3 class="text-lg font-bold text-purple-700 flex items-center gap-2"><i class="ph ph-trend-down"></i> Abater Capital</h3>
+                <button onclick="toggleModal('modalAbater')" class="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-200"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="space-y-4">
+                <p class="text-[11px] text-gray-500 leading-tight">O valor informado será deduzido do capital total emprestado. Os juros do próximo mês serão calculados automaticamente sobre o novo saldo devedor.</p>
+                <input type="hidden" id="abaterIndex">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-700 mb-1">Valor do Abatimento (R$)</label>
+                    <input type="number" id="abaterValor" step="0.01" placeholder="Ex: 500.00" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm outline-none focus:border-purple-500 transition-colors font-bold">
+                </div>
+                <button onclick="confirmarAbatimento()" class="w-full bg-purple-600 text-white font-bold rounded-xl py-3.5 mt-2 active:scale-95 transition-transform shadow-md hover:bg-purple-700 flex items-center justify-center gap-2">
+                    <i class="ph ph-check-circle text-lg"></i> Confirmar Abatimento
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Formulário Modal -->
     <div id="formModal" class="modal">
         <div class="bg-white w-full rounded-t-3xl p-6 shadow-xl transform transition-transform h-[85vh] overflow-y-auto">
@@ -1166,6 +1188,61 @@
         }
 
                 // PAGAMENTO E RECIBO
+
+        function abrirModalAbater(index) {
+            document.getElementById('abaterIndex').value = index;
+            document.getElementById('abaterValor').value = '';
+            toggleModal('modalAbater');
+            setTimeout(() => document.getElementById('abaterValor').focus(), 100);
+        }
+
+        async function confirmarAbatimento() {
+            let idx = document.getElementById('abaterIndex').value;
+            let valorAbatimento = parseFloat(document.getElementById('abaterValor').value);
+            if (idx === '' || isNaN(valorAbatimento) || valorAbatimento <= 0) {
+                alert("Insira um valor válido para abater.");
+                return;
+            }
+            let loan = loans[idx];
+            if (!loan || loan.quitado) return;
+            let fin = getLoanFin(loan);
+            
+            if (valorAbatimento >= fin.saldoDevedor) {
+                alert("O valor de abatimento não pode ser maior ou igual ao saldo devedor. Se o cliente vai pagar tudo, use o botão 'Quitar'.");
+                return;
+            }
+
+            if (!confirm(`Confirmar abatimento de ${formatarDinheiro(valorAbatimento)} no capital de ${loan.nome}?`)) return;
+
+            // Salva estado anterior para o recibo
+            let loanSnapshot = JSON.parse(JSON.stringify(loan));
+            let hojeStrLocal = getHojeISO();
+
+            if (!loan.pagamentos) loan.pagamentos = [];
+            loan.pagamentos.push({
+                data: hojeStrLocal,
+                valorJuros: 0,
+                valorTotal: valorAbatimento,
+                tipo: 'abatimento'
+            });
+
+            // Deduz o capital
+            loan.valor = loan.valor - valorAbatimento;
+            // O vencimento permanece o mesmo. Na próxima cobrança os juros vão ser calculados em cima do loan.valor atualizado.
+
+            toggleModal('modalAbater');
+            salvarDadosFirebase();
+            renderLoans();
+
+            // Gera PDF com tipo 'abatimento'
+            try {
+                await gerarComprovantePDF(loanSnapshot, false, loan.dataVencimento, valorAbatimento, 'abatimento');
+            } catch (err) {
+                console.error("Erro ao gerar PDF:", err);
+                alert("Abatimento registrado, mas houve erro ao gerar o PDF.");
+            }
+        }
+
         async function acaoReceber(index, tipoAcao) {
             let loan = loans[index];
             if (!loan || loan.quitado) return;
@@ -1246,6 +1323,7 @@
             // Calcular o saldo devedor APÓS o pagamento, usando a referência de snapshot
             let novoSaldoDevedor = fin.saldoDevedor;
             if (tipo === 'parcela') novoSaldoDevedor = Math.max(0, fin.saldoDevedor - fin.amortizacaoMes);
+            else if (tipo === 'abatimento') novoSaldoDevedor = Math.max(0, fin.saldoDevedor - valor);
             let proximoVencimentoStr = formatarDataBR(dataVencimentoFuturo);
             
             if (isQuitadoFuturo || tipo === 'quitacao') {
@@ -1421,6 +1499,7 @@
             let descTipoStr = "Pagamento de Mensalidade (Juros)";
             if (tipo === 'parcela') descTipoStr = `Amortização + Juros (Parcela ${loanSnapshot.parcelaAtual}/${loanSnapshot.parcelasTotais})`;
             else if (tipo === 'quitacao') descTipoStr = "Quitação Integral do Contrato";
+            else if (tipo === 'abatimento') descTipoStr = "Abatimento de Capital";
             doc.text(descTipoStr, 65, 218);
 
             doc.setFont("helvetica", "normal");
@@ -1651,8 +1730,9 @@ Qualquer dúvida, estou à disposição!`;
                     if (loan.tipoPagamento === 'juros') {
                         btnPagamentos = `
                             <div class="flex gap-2 w-full mt-4">
-                                <button onclick="acaoReceber(${index}, 'juros')" class="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-xl flex justify-center items-center gap-1.5 transition-colors text-[11px] uppercase tracking-wider shadow-sm"><i class="ph ph-hand-coins text-lg"></i> Rec. Juros</button>
-                                <button onclick="acaoReceber(${index}, 'quitacao')" class="flex-1 bg-gray-800 hover:bg-black text-white font-bold py-3 rounded-xl flex justify-center items-center gap-1.5 transition-colors text-[11px] uppercase tracking-wider shadow-sm"><i class="ph ph-flag-checkered text-lg"></i> Quitação</button>
+                                <button onclick="acaoReceber(${index}, 'juros')" class="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2.5 rounded-xl flex flex-col justify-center items-center gap-1 transition-colors text-[9px] uppercase tracking-wider shadow-sm"><i class="ph ph-hand-coins text-lg"></i> Juros</button>
+                                <button onclick="abrirModalAbater(${index})" class="flex-1 bg-purple-500 hover:bg-purple-600 text-white font-bold py-2.5 rounded-xl flex flex-col justify-center items-center gap-1 transition-colors text-[9px] uppercase tracking-wider shadow-sm"><i class="ph ph-trend-down text-lg"></i> Abater</button>
+                                <button onclick="acaoReceber(${index}, 'quitacao')" class="flex-1 bg-gray-800 hover:bg-black text-white font-bold py-2.5 rounded-xl flex flex-col justify-center items-center gap-1 transition-colors text-[9px] uppercase tracking-wider shadow-sm"><i class="ph ph-flag-checkered text-lg"></i> Quitar</button>
                             </div>
                         `;
                     } else {
