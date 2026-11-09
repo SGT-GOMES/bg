@@ -271,7 +271,7 @@
                     <input type="number" id="configValorMinimo" step="0.01" class="flex-1 bg-white border border-purple-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-purple-500 font-bold">
                     <button onclick="salvarConfigMinimo()" class="bg-purple-600 text-white font-bold rounded-xl px-5 py-2.5 text-sm shadow-sm active:scale-95 transition-transform hover:bg-purple-700">Salvar</button>
                 </div>
-                <p class="text-[10px] text-purple-600/70 mt-2 leading-tight">Mensalidade fixa aplicada quando a opção "Mín. Juros" for ativada no contrato.</p>
+                <p class="text-[10px] text-purple-600/70 mt-2 leading-tight">Valor mínimo cobrado automaticamente quando o cálculo dos juros do mês for menor que este valor.</p>
             </div>
 
             <!-- Backup -->
@@ -392,12 +392,7 @@
                             <input type="number" id="valor" step="0.01" class="w-full bg-white border border-blue-200 rounded-xl p-3 text-sm outline-none focus:border-blue-500">
                         </div>
                         <div>
-                            <div class="flex justify-between items-center mb-1">
-                                <label class="block text-xs font-semibold text-gray-700">Taxa (%)</label>
-                                <button type="button" id="btnMinimoJuros" onclick="toggleValorMinimo()" class="text-[9px] bg-gray-200 text-gray-600 px-2 py-0.5 rounded font-bold uppercase tracking-wider transition-colors cursor-pointer hidden">
-                                    MÍN. JUROS
-                                </button>
-                            </div>
+                            <label class="block text-xs font-semibold text-gray-700 mb-1">Taxa (%)</label>
                             <input type="number" id="taxa" step="0.01" class="w-full bg-white border border-blue-200 rounded-xl p-3 text-sm outline-none focus:border-blue-500 transition-colors">
                         </div>
                     </div>
@@ -441,8 +436,7 @@
         let tabAtual = 'todos';
         let orcamentoAtual = null;
         let configValorMinimoGlobal = parseFloat(localStorage.getItem('banco_gomes_valor_minimo')) || 150.00;
-        let isValorMinimoAtivo = false;
-        let valorMinimoTemporario = 0;
+        
 
         
                 
@@ -734,22 +728,10 @@
             localStorage.setItem('banco_gomes_valor_minimo', configValorMinimoGlobal);
             alert('Valor mínimo de juros atualizado para ' + formatarDinheiro(val));
             toggleModal('modalConfig');
-            atualizarUIValorMinimo();
-        }
-
-        function toggleValorMinimo() {
-            if (document.getElementById('tipoPagamento').value !== 'juros') return;
-            isValorMinimoAtivo = !isValorMinimoAtivo;
-            atualizarUIValorMinimo();
-        }
-
-        function atualizarUIValorMinimo() {
-            const btn = document.getElementById('btnMinimoJuros');
-            const inputTaxa = document.getElementById('taxa');
-            if (!btn || !inputTaxa) return;
             
-            let valAplicado = (valorMinimoTemporario > 0 ? valorMinimoTemporario : configValorMinimoGlobal);
-            btn.innerText = isValorMinimoAtivo ? `MÍN. R$ ${valAplicado.toFixed(2)}` : `MÍN. JUROS`;
+        }
+
+        ` : `MÍN. JUROS`;
             
             if (isValorMinimoAtivo) {
                 btn.classList.remove('bg-gray-200', 'text-gray-600');
@@ -793,12 +775,17 @@
         }
 
         function formatarTaxaLoan(loan) {
-            if (loan.tipoPagamento === 'juros' && loan.usaValorMinimo) {
-                let valMin = loan.valorMinimoAplicado || parseFloat(localStorage.getItem('banco_gomes_valor_minimo')) || 150;
-                return `Mínimo Juros (${formatarDinheiro(valMin)})`;
-            }
             let t = parseFloat(loan.taxa);
             if (isNaN(t)) t = 0;
+            
+            if (loan.tipoPagamento === 'juros') {
+                let valorCap = parseFloat(loan.valor) || 0;
+                let jurosCalc = valorCap * (t / 100);
+                let valMin = parseFloat(localStorage.getItem('banco_gomes_valor_minimo')) || 150.00;
+                if (jurosCalc < valMin) {
+                    return `${t.toFixed(2)}% a.m. (Mín. ${formatarDinheiro(valMin)})`;
+                }
+            }
             return `${t.toFixed(2)}% a.m.`;
         }
 
@@ -846,10 +833,11 @@
             const pAtual = parseInt(loan.parcelaAtual) || 1;
 
             if (loan.tipoPagamento === 'juros') {
-                if (loan.usaValorMinimo) {
-                    jurosMes = loan.valorMinimoAplicado || parseFloat(localStorage.getItem('banco_gomes_valor_minimo')) || 150;
-                } else {
-                    jurosMes = valorCap * i;
+                jurosMes = valorCap * i;
+                let valMinimo = parseFloat(localStorage.getItem('banco_gomes_valor_minimo')) || 150.00;
+                // Aplica o valor mínimo automaticamente se os juros forem baixos demais
+                if (jurosMes < valMinimo) {
+                    jurosMes = valMinimo;
                 }
                 parcelaValor = jurosMes;
                 amortizacaoMes = 0;
@@ -1088,8 +1076,7 @@
                 document.getElementById('parcelas').value = '1';
                 document.getElementById('grupoParcelas').style.display = 'none';
                 
-                isValorMinimoAtivo = false;
-                valorMinimoTemporario = 0;
+                
                 mudarTipoPagamento();
             }
         }
@@ -1097,11 +1084,7 @@
         function mudarTipoPagamento() {
             const tipo = document.getElementById('tipoPagamento').value;
             document.getElementById('grupoParcelas').style.display = (tipo === 'price') ? 'block' : 'none';
-            document.getElementById('btnMinimoJuros').style.display = (tipo === 'juros') ? 'block' : 'none';
-            if (tipo === 'price') {
-                isValorMinimoAtivo = false;
-            }
-            atualizarUIValorMinimo();
+            
         }
 
         // CRUD
@@ -1120,7 +1103,7 @@
             const tipoPagamento = document.getElementById('tipoPagamento').value;
             const parcelasTotais = parseInt(document.getElementById('parcelas').value) || 1;
 
-            if (!nome || isNaN(valor) || valor <= 0 || (tipoPagamento !== 'juros' && isNaN(parseFloat(inputTaxaVal))) || (tipoPagamento === 'juros' && !isValorMinimoAtivo && isNaN(parseFloat(inputTaxaVal)))) {
+            if (!nome || isNaN(valor) || valor <= 0 || (tipoPagamento !== 'juros' && isNaN(parseFloat(inputTaxaVal))) || (tipoPagamento === 'juros' && isNaN(parseFloat(inputTaxaVal)))) {
                 alert('Preencha Nome, Capital e Taxa.'); 
                 return; 
             }
@@ -1138,8 +1121,9 @@
                 parcelaAtual: editIndex >= 0 ? (loans[editIndex].parcelaAtual || 1) : 1,
                 quitado: editIndex >= 0 ? (loans[editIndex].quitado || false) : false,
                 pagamentos: editIndex >= 0 ? (loans[editIndex].pagamentos || []) : [],
-                usaValorMinimo: (tipoPagamento === 'juros' && isValorMinimoAtivo),
-                valorMinimoAplicado: (tipoPagamento === 'juros' && isValorMinimoAtivo) ? (valorMinimoTemporario > 0 ? valorMinimoTemporario : configValorMinimoGlobal) : 0
+                // Valores automáticos (lógica de mínimo é resolvida dinamicamente)
+                usaValorMinimo: false,
+                valorMinimoAplicado: 0
             };
 
             if (editIndex >= 0) loans[editIndex] = loanData;
@@ -1452,7 +1436,7 @@
             doc.text("Modalidade:", 23, 174);
             doc.setFont("helvetica", "bold");
             doc.setTextColor(...corCinzaEscuro);
-            let modalidadeStr = loanSnapshot.tipoPagamento === 'price' ? 'Tabela Price (Parcelas Fixas)' : (loanSnapshot.usaValorMinimo ? 'Mínimo Juros Fixado' : 'Apenas Juros Mensais');
+            let modalidadeStr = loanSnapshot.tipoPagamento === 'price' ? 'Tabela Price (Parcelas Fixas)' : 'Apenas Juros Mensais';
             doc.text(modalidadeStr, 65, 174);
 
             doc.setFont("helvetica", "normal");
@@ -1703,7 +1687,12 @@ Qualquer dúvida, estou à disposição!`;
                     totalJur += fin.jurosMes;
                 }
 
-                let tipoTexto = loan.tipoPagamento === 'price' ? `Tabela Price (${loan.parcelaAtual || 1}/${loan.parcelasTotais || 1})` : (loan.usaValorMinimo ? 'Mínimo Juros' : 'Juros Mensais');
+                let usaMinimo = false;
+                if (loan.tipoPagamento === 'juros') {
+                    let valMin = parseFloat(localStorage.getItem('banco_gomes_valor_minimo')) || 150.00;
+                    if ((parseFloat(loan.valor) || 0) * ((parseFloat(loan.taxa) || 0) / 100) < valMin) usaMinimo = true;
+                }
+                let tipoTexto = loan.tipoPagamento === 'price' ? `Tabela Price (${loan.parcelaAtual || 1}/${loan.parcelasTotais || 1})` : (usaMinimo ? 'Juros Mensais (Mínimo)' : 'Juros Mensais');
                 let htmlBarra = '';
 
                 if (loan.tipoPagamento === 'price') {
