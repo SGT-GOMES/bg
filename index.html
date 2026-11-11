@@ -47,8 +47,6 @@
         })();
     </script>
 
-    <link rel="manifest" href="./manifest.json?v=final">
-    <meta name="theme-color" content="#1e3a8a">
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Ícones Phosphor -->
@@ -1867,16 +1865,6 @@ Qualquer dúvida, estou à disposição!`;
         }
 
         inicializarSeguranca();
-    </script>
-    <script>
-        // Registrar Service Worker forçando o Android a limpar a cache e atualizar
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js?v=' + new Date().getTime()).then(reg => {
-                    reg.update(); // Força o Android a buscar a versão mais recente
-                });
-            });
-        }
     </script>
 </body>
 </html>
