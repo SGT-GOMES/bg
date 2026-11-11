@@ -786,6 +786,16 @@
         }
 
         // UTILIDADES
+        function escapeHTML(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
         function formatarDinheiro(valor) {
             let v = parseFloat(valor);
             if (isNaN(v)) v = 0;
@@ -852,7 +862,7 @@
                     
                     msgHtml += `<div class="bg-gray-50 border border-gray-100 p-3 rounded-xl flex justify-between items-center">
                         <div>
-                            <p class="text-xs font-bold text-gray-800">${l.nome}</p>
+                            <p class="text-xs font-bold text-gray-800">${escapeHTML(l.nome)}</p>
                             <p class="text-xs font-black text-blue-600">${formatarDinheiro(valorCobrar)}</p>
                         </div>
                         ${btnWpp}
@@ -1723,6 +1733,10 @@ Qualquer dúvida, estou à disposição!`;
 
             loans.forEach((loan, index) => {
                 if (!loan.dataVencimento) loan.dataVencimento = adicionarMesesISO(loan.dataEmprestimo || hojeStrRender, 1);
+                
+                const nomeSeguro = escapeHTML(loan.nome);
+                const telefoneSeguro = escapeHTML(loan.telefone);
+                
                 const emAtraso = hojeStrRender > loan.dataVencimento && !loan.quitado;
                 const emDia = !emAtraso && !loan.quitado;
 
@@ -1790,8 +1804,8 @@ Qualquer dúvida, estou à disposição!`;
                     <div class="bg-white p-5 rounded-3xl shadow-sm border border-gray-200 relative ${loan.quitado ? 'opacity-75 grayscale-[20%]' : ''} hover:shadow-md transition-shadow">
                         <div class="flex justify-between items-start mb-4">
                             <div class="pr-2">
-                                <h2 class="text-lg font-black text-gray-800 tracking-tight leading-tight">${loan.nome}</h2>
-                                <p class="text-xs text-gray-400 mt-1 flex items-center gap-1 font-medium"><i class="ph ph-phone"></i> ${loan.telefone || 'S/ Telefone'}</p>
+                                <h2 class="text-lg font-black text-gray-800 tracking-tight leading-tight">${nomeSeguro}</h2>
+                                <p class="text-xs text-gray-400 mt-1 flex items-center gap-1 font-medium"><i class="ph ph-phone"></i> ${telefoneSeguro || 'S/ Telefone'}</p>
                             </div>
                             <span class="text-[9px] font-black px-2.5 py-1.5 rounded-lg uppercase tracking-wider ${statusClass} flex-shrink-0">${statusText}</span>
                         </div>
