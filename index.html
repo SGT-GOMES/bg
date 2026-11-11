@@ -47,6 +47,8 @@
         })();
     </script>
 
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1e3a8a">
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Ícones Phosphor -->
@@ -1865,6 +1867,14 @@ Qualquer dúvida, estou à disposição!`;
         }
 
         inicializarSeguranca();
+    </script>
+    <script>
+        // Registrar Service Worker para Android
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js');
+            });
+        }
     </script>
 </body>
 </html>
