@@ -550,6 +550,7 @@
                 document.getElementById('loginScreen').classList.remove('hidden');
                 document.getElementById('appContent').classList.remove('visible');
                 mostrarBotaoBiometria(); // MOSTRA BOTAO SE TIVER ATIVADO
+                verificarBloqueio(); // Verifica se está bloqueado por tentativas
                 setTimeout(() => document.getElementById('senhaInput').focus(), 100);
             }
         }
@@ -558,8 +559,53 @@
             if (event.key === 'Enter') verificarSenha();
         }
 
+        function verificarBloqueio() {
+            const bloqueioAte = localStorage.getItem('bg_bloqueio_ate');
+            if (bloqueioAte && Date.now() < parseInt(bloqueioAte)) {
+                const minutosRestantes = Math.ceil((parseInt(bloqueioAte) - Date.now()) / 60000);
+                mostrarMensagemErro(`Acesso bloqueado. Tente em ${minutosRestantes} min.`);
+                document.getElementById('senhaInput').disabled = true;
+                return true;
+            } else if (bloqueioAte) {
+                localStorage.removeItem('bg_bloqueio_ate');
+                localStorage.setItem('bg_tentativas_falhas', '0');
+                document.getElementById('senhaInput').disabled = false;
+            }
+            return false;
+        }
+
+        function registrarFalhaLogin() {
+            let tentativas = parseInt(localStorage.getItem('bg_tentativas_falhas') || '0');
+            tentativas++;
+            localStorage.setItem('bg_tentativas_falhas', tentativas.toString());
+
+            if (tentativas >= 5) {
+                const bloqueioAte = Date.now() + 15 * 60 * 1000; // 15 minutos
+                localStorage.setItem('bg_bloqueio_ate', bloqueioAte.toString());
+                mostrarMensagemErro(`Acesso bloqueado por 15 minutos (5 tentativas erradas).`);
+                document.getElementById('senhaInput').disabled = true;
+            } else {
+                mostrarMensagemErro(`Senha incorreta. Tentativa ${tentativas} de 5.`);
+            }
+        }
+
+        function mostrarMensagemErro(msg) {
+            const erroEl = document.getElementById('erroSenha');
+            erroEl.innerText = msg;
+            erroEl.classList.remove('hidden');
+            const inputEl = document.getElementById('senhaInput');
+            inputEl.classList.add('border-red-500', 'bg-red-50');
+            setTimeout(() => {
+                inputEl.classList.remove('border-red-500', 'bg-red-50');
+            }, 1000);
+        }
+
         async function verificarSenha() {
+            if (verificarBloqueio()) return;
+
             const senhaDigitada = document.getElementById('senhaInput').value;
+            if (!senhaDigitada) return;
+
             const btn = document.querySelector('#loginScreen button');
             const originalText = btn.innerHTML;
             btn.innerHTML = '<i class="ph ph-spinner animate-spin text-xl"></i>';
@@ -583,23 +629,20 @@
                     firebaseIdToken = data.idToken;
                     localStorage.setItem('bg_fb_pwd', senhaDigitada);
                     sessionStorage.setItem('acesso_liberado', 'true');
+                    
+                    // Zera contagem de erros ao logar com sucesso
+                    localStorage.removeItem('bg_tentativas_falhas');
+                    localStorage.removeItem('bg_bloqueio_ate');
+                    
                     liberarAcesso();
                 } else {
-                    mostrarErroSenha();
+                    registrarFalhaLogin();
                 }
             } catch(e) {
                 btn.innerHTML = originalText;
                 btn.disabled = false;
-                mostrarErroSenha();
+                registrarFalhaLogin();
             }
-        }
-
-        function mostrarErroSenha() {
-            document.getElementById('erroSenha').classList.remove('hidden');
-            document.getElementById('senhaInput').classList.add('border-red-500', 'bg-red-50');
-            setTimeout(() => {
-                document.getElementById('senhaInput').classList.remove('border-red-500', 'bg-red-50');
-            }, 1000);
         }
 
         
